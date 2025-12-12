@@ -39,3 +39,6 @@ jobs:
       - name: Upload coverage to Smokeshow
         if: github.event_name == 'pull_request'
         run: smokeshow upload coverage.xml
+      - name: pre-commit-ci lite
+        uses: pre-commit-ci/lite-action@v1.1.0
+        if: always()
