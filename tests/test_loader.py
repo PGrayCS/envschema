@@ -20,6 +20,7 @@ def mock_dotenv() -> None:
     """Мокает модуль dotenv для всех тестов."""
     mock_dotenv_module = MagicMock()
     mock_dotenv_module.dotenv_values = MagicMock()
+    mock_dotenv_module.find_dotenv = MagicMock()
 
     with patch.dict("sys.modules", {"dotenv": mock_dotenv_module}):
         yield
@@ -72,18 +73,24 @@ class TestLoadDotenv:
         """Проверяет автопоиск .env файла при dotenv_path=True."""
         env_file = tmp_path / ".env"
         env_file.write_text("AUTO_KEY=auto_value\n")
+        sys.modules["dotenv"].find_dotenv.return_value = str(env_file)
+        sys.modules["dotenv"].dotenv_values.return_value = {"AUTO_KEY": "auto_value"}
 
-        original_cwd = os.getcwd()
-        try:
-            os.chdir(tmp_path)
-            sys.modules["dotenv"].dotenv_values.return_value = {
-                "AUTO_KEY": "auto_value"
-            }
+        result = load_dotenv(True)
+        assert result == {"AUTO_KEY": "auto_value"}
+        sys.modules["dotenv"].find_dotenv.assert_called_once_with(usecwd=True)
 
-            result = load_dotenv(True)
-            assert result == {"AUTO_KEY": "auto_value"}
-        finally:
-            os.chdir(original_cwd)
+    def test_load_dotenv_with_bool_true_not_found(self) -> None:
+        """Проверяет ошибку при автопоиске, если файл не найден."""
+        # Мокаем find_dotenv для возврата пустой строки (файл не найден)
+        sys.modules["dotenv"].find_dotenv.return_value = ""
+
+        with pytest.raises(FileNotFoundError) as exc_info:
+            load_dotenv(True)
+
+        assert ".env file not found in current or parent directories" in str(
+            exc_info.value
+        )
 
     def test_load_dotenv_with_bool_false(self) -> None:
         """Проверяет возврат пустого словаря при dotenv_path=False."""
@@ -277,12 +284,11 @@ class TestLoadEnvWithDotenv:
         env_file = tmp_path / ".env"
         env_file.write_text("AUTO_KEY=auto_value\n")
 
-        original_cwd = os.getcwd()
         original_env = dict(os.environ)
 
         try:
             os.environ.clear()
-            os.chdir(tmp_path)
+            sys.modules["dotenv"].find_dotenv.return_value = str(env_file)
             sys.modules["dotenv"].dotenv_values.return_value = {
                 "AUTO_KEY": "auto_value"
             }
@@ -290,8 +296,8 @@ class TestLoadEnvWithDotenv:
             result = load_env_with_dotenv(dotenv_path=True)
 
             assert result["AUTO_KEY"] == "auto_value"
+            sys.modules["dotenv"].find_dotenv.assert_called_once_with(usecwd=True)
         finally:
-            os.chdir(original_cwd)
             os.environ.clear()
             os.environ.update(original_env)
 
