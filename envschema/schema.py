@@ -1,9 +1,10 @@
-import os
+from pathlib import Path
 from typing import Any, get_type_hints
 
 from .casters import cast_value
 from .errors import EnvSchemaError, ValidationError
 from .field import _MISSING, Field, field_from_default
+from .loader import load_env_with_dotenv
 
 
 class EnvSchemaMeta(type):
@@ -105,21 +106,30 @@ class EnvSchema(metaclass=EnvSchemaMeta):
         cls,
         env: dict[str, str] | None = None,
         prefix: str = "",
+        dotenv_path: str | Path | bool | None = None,
+        dotenv_override: bool = False,
     ) -> "EnvSchema":
         """Загружает и валидирует схему из переменных окружения.
 
         Args:
             env: Словарь переменных окружения (по умолчанию os.environ)
             prefix: Префикс для всех переменных схемы
-
-        Returns:
-            Экземпляр схемы со значениями из окружения
+            dotenv_path: Путь к .env файлу, True для автопоиска, None для игнора
+            dotenv_override: Если True, .env перезаписывает системные переменные
 
         Raises:
             EnvSchemaError: Если валидация не прошла
+            ImportError: Если python-dotenv не установлен (if using dotenv_path)
+            FileNotFoundError: Если .env файл не найден
+
+        Example:
+            >>> settings = Settings.load()  # Только os.environ
+            >>> settings = Settings.load(dotenv_path=".env")  # С .env файлом
+            >>> settings = Settings.load(dotenv_path=True)  # Автопоиск .env
         """
         if env is None:
-            env = dict(os.environ)
+            # Загружаем окружение с поддержкой .env файлов
+            env = load_env_with_dotenv(dotenv_path, dotenv_override)
 
         fields = cls._get_fields()
         errors: list[ValidationError] = []
