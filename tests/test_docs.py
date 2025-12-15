@@ -3,8 +3,6 @@
 import tempfile
 from pathlib import Path
 
-import pytest
-
 from envschema import EnvSchema, Field
 from envschema.docs import DocumentationGenerator
 
@@ -14,6 +12,7 @@ class TestDocumentationGenerator:
 
     def test_generate_example_env_simple(self) -> None:
         """Проверяет генерацию .env.example для простой схемы."""
+
         class Settings(EnvSchema):
             port: int = Field(default=8000, description="Application HTTP port")
             debug: bool = Field(default=False, description="Enable debug mode")
@@ -34,6 +33,7 @@ class TestDocumentationGenerator:
 
     def test_generate_example_env_with_file(self) -> None:
         """Проверяет запись .env.example в файл."""
+
         class Settings(EnvSchema):
             port: int = Field(default=8000, description="Application HTTP port")
 
@@ -50,6 +50,7 @@ class TestDocumentationGenerator:
 
     def test_generate_markdown_docs(self) -> None:
         """Проверяет генерацию Markdown документации."""
+
         class Settings(EnvSchema):
             port: int = Field(default=8000, description="Application HTTP port")
             debug: bool = Field(default=False, description="Enable debug mode")
@@ -58,19 +59,20 @@ class TestDocumentationGenerator:
         generator = DocumentationGenerator(Settings)
         docs = generator.generate_markdown_docs()
 
-        assert "## Environment Variables" in docs
+        assert "# Environment Variables Configuration" in docs
         assert "| Variable | Type | Required | Default | Description |" in docs
-        assert "| PORT |" in docs
-        assert "| DEBUG |" in docs
-        assert "| DATABASE_URL |" in docs
-        assert "| int |" in docs
-        assert "| bool |" in docs
-        assert "| str |" in docs
+        assert "| `PORT` |" in docs
+        assert "| `DEBUG` |" in docs
+        assert "| `DATABASE_URL` |" in docs
+        assert "| `int` |" in docs
+        assert "| `bool` |" in docs
+        assert "| `str` |" in docs
         assert "| No |" in docs
-        assert "| Yes |" in docs
+        assert "| **Yes** |" in docs
 
     def test_generate_example_env_with_prefix(self) -> None:
         """Проверяет генерацию с префиксом."""
+
         class Settings(EnvSchema):
             port: int = Field(default=8000)
 
@@ -78,20 +80,22 @@ class TestDocumentationGenerator:
         content = generator.generate_example_env()
 
         assert "APP_PORT" in content
-        assert "PORT" not in content
+        assert "\nPORT=" not in content
 
     def test_generate_markdown_docs_with_prefix(self) -> None:
         """Проверяет генерацию Markdown с префиксом."""
+
         class Settings(EnvSchema):
             port: int = Field(default=8000)
 
         generator = DocumentationGenerator(Settings, prefix="APP_")
         docs = generator.generate_markdown_docs()
 
-        assert "| APP_PORT |" in docs
+        assert "| `APP_PORT` |" in docs
 
     def test_generate_example_env_list_types(self) -> None:
         """Проверяет генерацию для типов list."""
+
         class Settings(EnvSchema):
             hosts: list[str] = Field(default=["host1", "host2"])
             ports: list[int] = Field(default=[8080, 9090])
@@ -108,16 +112,18 @@ class TestDocumentationGenerator:
 
     def test_generate_markdown_docs_list_types(self) -> None:
         """Проверяет генерацию Markdown для типов list."""
+
         class Settings(EnvSchema):
             hosts: list[str] = Field(default=["host1", "host2"])
 
         generator = DocumentationGenerator(Settings)
         docs = generator.generate_markdown_docs()
 
-        assert "| list[str] |" in docs
+        assert "| `list[str]` |" in docs
 
     def test_generate_example_env_required_fields(self) -> None:
         """Проверяет генерацию для обязательных полей."""
+
         class Settings(EnvSchema):
             api_key: str = Field(description="API key")
 
@@ -129,21 +135,23 @@ class TestDocumentationGenerator:
 
     def test_generate_markdown_docs_required_fields(self) -> None:
         """Проверяет генерацию Markdown для обязательных полей."""
+
         class Settings(EnvSchema):
             api_key: str = Field(description="API key")
 
         generator = DocumentationGenerator(Settings)
         docs = generator.generate_markdown_docs()
 
-        assert "| Yes |" in docs
+        assert "| **Yes** |" in docs
         assert "| - |" in docs  # нет default для обязательного поля
 
     def test_generate_markdown_escapes_special_chars(self) -> None:
         """Проверяет экранирование специальных символов Markdown."""
+
         class Settings(EnvSchema):
             test_var: str = Field(
                 default="test|value_with_underscore*and_stars",
-                description="Test with | _ * symbols"
+                description="Test with | _ * symbols",
             )
 
         generator = DocumentationGenerator(Settings)
@@ -154,6 +162,7 @@ class TestDocumentationGenerator:
 
     def test_generate_example_env_custom_env_name(self) -> None:
         """Проверяет генерацию с кастомным именем переменной."""
+
         class Settings(EnvSchema):
             api_key: str = Field(env="SECRET_KEY", default="default_key")
 
@@ -165,17 +174,19 @@ class TestDocumentationGenerator:
 
     def test_generate_markdown_docs_custom_env_name(self) -> None:
         """Проверяет генерацию Markdown с кастомным именем переменной."""
+
         class Settings(EnvSchema):
             api_key: str = Field(env="SECRET_KEY", default="default_key")
 
         generator = DocumentationGenerator(Settings)
         docs = generator.generate_markdown_docs()
 
-        assert "| SECRET_KEY |" in docs
-        assert "| API_KEY |" not in docs
+        assert "| `SECRET_KEY` |" in docs
+        assert "| `API_KEY` |" not in docs
 
     def test_generate_example_env_dict_type(self) -> None:
         """Проверяет генерацию для типа dict."""
+
         class Settings(EnvSchema):
             config: dict = Field(default={"key": "value", "num": 42})
 
@@ -188,16 +199,18 @@ class TestDocumentationGenerator:
 
     def test_generate_markdown_docs_dict_type(self) -> None:
         """Проверяет генерацию Markdown для типа dict."""
+
         class Settings(EnvSchema):
             config: dict = Field(default={"key": "value"})
 
         generator = DocumentationGenerator(Settings)
         docs = generator.generate_markdown_docs()
 
-        assert "| dict |" in docs
+        assert "| `dict` |" in docs
 
     def test_metadata_caching(self) -> None:
         """Проверяет кеширование метаданных."""
+
         class Settings(EnvSchema):
             port: int = Field(default=8000)
 
