@@ -7,9 +7,9 @@ from .casters import cast_value
 
 
 class EnvSchemaMeta(type):
-    """Метакласс для EnvSchema.
-    
-    Обрабатывает аннотации типов и создает Field дескрипторы.
+    """Metaclass for `EnvSchema`.
+
+    Processes type annotations and creates `Field` descriptors.
     """
     
     def __new__(
@@ -19,50 +19,43 @@ class EnvSchemaMeta(type):
         namespace: dict[str, Any],
         **kwargs: Any
     ) -> type:
-        """Создает новый класс схемы.
-        
+        """Create a new schema class.
+
         Args:
-            name: Имя класса
-            bases: Базовые классы
-            namespace: Пространство имен класса
-            **kwargs: Дополнительные аргументы
-            
+            name: Class name.
+            bases: Base classes.
+            namespace: Class namespace.
+            **kwargs: Additional arguments passed to the metaclass.
+
         Returns:
-            Новый класс схемы
+            Newly created schema class.
         """
         cls = super().__new__(mcs, name, bases, namespace, **kwargs)
-        
-        # Не обрабатываем базовый класс EnvSchema
+
         if name == 'EnvSchema':
             return cls
-        
-        # Получаем аннотации типов
+
         annotations = namespace.get('__annotations__', {})
-        
-        # Обрабатываем каждое поле
+
         for field_name, field_type in annotations.items():
-            # Проверяем, есть ли уже Field дескриптор
             field_value = namespace.get(field_name, _MISSING)
-            
+
             if isinstance(field_value, Field):
-                # Уже Field, оставляем как есть
                 field_obj = field_value
             elif field_value is not _MISSING:
-                # Простое значение по умолчанию → создаем Field
                 field_obj = field_from_default(field_value)
                 setattr(cls, field_name, field_obj)
             else:
-                # Обязательное поле без значения → создаем Field без default
                 field_obj = Field()
                 setattr(cls, field_name, field_obj)
-        
+
         return cls
 
 
 class EnvSchema(metaclass=EnvSchemaMeta):
-    """Базовый класс для схем переменных окружения.
-    
-    Пример использования:
+    """Base class for environment variable schemas.
+
+    Example:
         >>> class Settings(EnvSchema):
         ...     port: int
         ...     debug: bool = False
@@ -71,20 +64,20 @@ class EnvSchema(metaclass=EnvSchemaMeta):
     """
     
     def __init__(self, **values: Any) -> None:
-        """Инициализирует экземпляр схемы с значениями.
-        
+        """Initialize the schema instance with field values.
+
         Args:
-            **values: Значения полей
+            **values: Field values.
         """
         for key, value in values.items():
             setattr(self, key, value)
     
     @classmethod
     def _get_fields(cls) -> dict[str, tuple[Field, type]]:
-        """Получает все поля схемы с их типами.
-        
+        """Return all schema fields with their types.
+
         Returns:
-            Словарь {имя_поля: (Field, тип)}
+            Mapping of field name to `(Field, type)`.
         """
         fields = {}
         type_hints = get_type_hints(cls)
@@ -104,28 +97,28 @@ class EnvSchema(metaclass=EnvSchemaMeta):
         env: Optional[dict[str, str]] = None,
         prefix: str = "",
     ) -> "EnvSchema":
-        """Загружает и валидирует схему из переменных окружения.
-        
+        """Load and validate the schema from environment variables.
+
         Args:
-            env: Словарь переменных окружения (по умолчанию os.environ)
-            prefix: Префикс для всех переменных схемы
-            
+            env: Environment variables mapping (defaults to `os.environ`).
+            prefix: Prefix applied to all schema variables.
+
         Returns:
-            Экземпляр схемы со значениями из окружения
-            
+            Schema instance populated from environment variables.
+
         Raises:
-            EnvSchemaError: Если валидация не прошла
+            EnvSchemaError: If validation fails.
         """
         if env is None:
             env = dict(os.environ)
-        
+
         fields = cls._get_fields()
         errors: list[ValidationError] = []
         values: dict[str, Any] = {}
-        
+
         for field_name, (field, field_type) in fields.items():
             env_name = field.get_env_name(prefix)
-            
+
             try:
                 value = cls._load_field(
                     field=field,
@@ -135,13 +128,13 @@ class EnvSchema(metaclass=EnvSchemaMeta):
                     env=env,
                 )
                 values[field_name] = value
-                
+
             except ValidationError as e:
                 errors.append(e)
-        
+
         if errors:
             raise EnvSchemaError(errors)
-        
+
         return cls(**values)
     
     @classmethod
@@ -153,24 +146,23 @@ class EnvSchema(metaclass=EnvSchemaMeta):
         env_name: str,
         env: dict[str, str],
     ) -> Any:
-        """Загружает и валидирует одно поле.
-        
+        """Load and validate a single field.
+
         Args:
-            field: Дескриптор поля
-            field_name: Имя поля в схеме
-            field_type: Тип поля
-            env_name: Имя переменной окружения
-            env: Словарь переменных окружения
-            
+            field: Field descriptor.
+            field_name: Field name in the schema.
+            field_type: Field type.
+            env_name: Environment variable name.
+            env: Environment variables mapping.
+
         Returns:
-            Значение поля
-            
+            Parsed field value.
+
         Raises:
-            ValidationError: Если валидация не прошла
+            ValidationError: If validation fails.
         """
         raw_value = env.get(env_name)
-        
-        # Проверяем наличие значения
+
         if raw_value is None:
             if field.has_default():
                 return field.get_default()
@@ -181,8 +173,7 @@ class EnvSchema(metaclass=EnvSchemaMeta):
                     message="missing required environment variable",
                     expected_type=field_type.__name__,
                 )
-        
-        # Кастим значение в нужный тип
+
         try:
             return cast_value(raw_value, field_type)
         except ValueError as e:
@@ -195,17 +186,17 @@ class EnvSchema(metaclass=EnvSchemaMeta):
             )
     
     def __repr__(self) -> str:
-        """Возвращает строковое представление схемы.
-        
+        """Return a debug representation of the schema instance.
+
         Returns:
-            Строковое представление для отладки
+            Debug string representation.
         """
         fields = self._get_fields()
         field_values = []
-        
+
         for field_name in fields.keys():
             value = getattr(self, field_name, None)
             field_values.append(f"{field_name}={value!r}")
-        
+
         fields_str = ", ".join(field_values)
         return f"{self.__class__.__name__}({fields_str})"

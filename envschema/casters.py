@@ -7,28 +7,28 @@ CasterFunc = Callable[[str], Any]
 
 
 def cast_str(value: str) -> str:
-    """Кастит значение в строку.
-    
+    """Return the value as a string.
+
     Args:
-        value: Строковое значение из окружения
-        
+        value: Raw string value from the environment.
+
     Returns:
-        Исходная строка без изменений
+        The original value unchanged.
     """
     return value
 
 
 def cast_int(value: str) -> int:
-    """Кастит значение в целое число.
-    
+    """Cast the value to an integer.
+
     Args:
-        value: Строковое значение из окружения
-        
+        value: Raw string value from the environment.
+
     Returns:
-        Целое число
-        
+        Parsed integer value.
+
     Raises:
-        ValueError: Если значение невозможно преобразовать в int
+        ValueError: If the value cannot be converted to `int`.
     """
     try:
         return int(value)
@@ -37,16 +37,16 @@ def cast_int(value: str) -> int:
 
 
 def cast_float(value: str) -> float:
-    """Кастит значение в число с плавающей точкой.
-    
+    """Cast the value to a float.
+
     Args:
-        value: Строковое значение из окружения
-        
+        value: Raw string value from the environment.
+
     Returns:
-        Число с плавающей точкой
-        
+        Parsed float value.
+
     Raises:
-        ValueError: Если значение невозможно преобразовать в float
+        ValueError: If the value cannot be converted to `float`.
     """
     try:
         return float(value)
@@ -55,23 +55,23 @@ def cast_float(value: str) -> float:
 
 
 def cast_bool(value: str) -> bool:
-    """Кастит значение в булево значение.
-    
-    Поддерживаемые значения:
-    - True: "true", "yes", "1", "on" (регистронезависимо)
-    - False: "false", "no", "0", "off" (регистронезависимо)
-    
+    """Cast the value to a boolean.
+
+    Supported values (case-insensitive):
+    - True: "true", "yes", "1", "on"
+    - False: "false", "no", "0", "off"
+
     Args:
-        value: Строковое значение из окружения
-        
+        value: Raw string value from the environment.
+
     Returns:
-        Булево значение
-        
+        Parsed boolean value.
+
     Raises:
-        ValueError: Если значение не распознано как bool
+        ValueError: If the value cannot be interpreted as a boolean.
     """
     normalized = value.lower().strip()
-    
+
     if normalized in ("true", "yes", "1", "on"):
         return True
     elif normalized in ("false", "no", "0", "off"):
@@ -84,32 +84,30 @@ def cast_bool(value: str) -> bool:
 
 
 def cast_list(value: str, item_type: type = str) -> list:
-    """Кастит значение в список.
-    
-    Автоматически определяет формат:
-    - Если строка выглядит как JSON массив → парсит как JSON
-    - Иначе → парсит как CSV (разделитель: запятая)
-    
+    """Cast the value to a list.
+
+    The input format is detected automatically:
+    - If the string looks like a JSON array, it is parsed as JSON.
+    - Otherwise, it is parsed as comma-separated values.
+
     Args:
-        value: Строковое значение из окружения
-        item_type: Тип элементов списка (по умолчанию str)
-        
+        value: Raw string value from the environment.
+        item_type: Element type for the list (defaults to `str`).
+
     Returns:
-        Список элементов указанного типа
-        
+        A list of parsed elements.
+
     Raises:
-        ValueError: Если значение невозможно распарсить
+        ValueError: If the value cannot be parsed.
     """
     stripped = value.strip()
-    
-    # Проверяем, выглядит ли как JSON массив
+
     if stripped.startswith('[') and stripped.endswith(']'):
         try:
             parsed = json.loads(stripped)
             if not isinstance(parsed, list):
                 raise ValueError(f"expected JSON array, got {type(parsed)}")
-            
-            # Кастим элементы в нужный тип
+
             if item_type != str:
                 caster = _get_caster_for_type(item_type)
                 return [caster(str(item)) for item in parsed]
@@ -117,14 +115,12 @@ def cast_list(value: str, item_type: type = str) -> list:
             
         except json.JSONDecodeError as e:
             raise ValueError(f"invalid JSON array: {e}")
-    
-    # Парсим как CSV
+
     if not stripped:
         return []
-    
+
     items = [item.strip() for item in stripped.split(',')]
-    
-    # Кастим элементы в нужный тип
+
     if item_type != str:
         caster = _get_caster_for_type(item_type)
         try:
@@ -136,16 +132,16 @@ def cast_list(value: str, item_type: type = str) -> list:
 
 
 def cast_dict(value: str) -> dict:
-    """Кастит значение в словарь через JSON.
-    
+    """Cast the value to a dictionary using JSON.
+
     Args:
-        value: Строковое значение из окружения (JSON формат)
-        
+        value: Raw string value from the environment (JSON format).
+
     Returns:
-        Словарь
-        
+        Parsed dictionary.
+
     Raises:
-        ValueError: Если значение невозможно распарсить как JSON объект
+        ValueError: If the value cannot be parsed as a JSON object.
     """
     try:
         parsed = json.loads(value)
@@ -156,7 +152,7 @@ def cast_dict(value: str) -> dict:
         raise ValueError(f"invalid JSON object: {e}")
 
 
-# Реестр кастеров для базовых типов
+# Registry of caster functions for built-in types.
 _CASTERS: dict[type, CasterFunc] = {
     str: cast_str,
     int: cast_int,
@@ -167,12 +163,12 @@ _CASTERS: dict[type, CasterFunc] = {
 
 
 def register_caster(type_: type, caster: CasterFunc) -> None:
-    """Регистрирует кастомный кастер для типа.
-    
+    """Register a custom caster function for a type.
+
     Args:
-        type_: Тип данных
-        caster: Функция кастинга (str -> type_)
-        
+        type_: Target type.
+        caster: Caster function (`str -> type_`).
+
     Example:
         >>> def cast_timedelta(value: str) -> timedelta:
         ...     return timedelta(seconds=int(value))
@@ -182,46 +178,44 @@ def register_caster(type_: type, caster: CasterFunc) -> None:
 
 
 def _get_caster_for_type(type_: type) -> CasterFunc:
-    """Получает функцию кастинга для типа.
-    
+    """Get the caster function registered for a given type.
+
     Args:
-        type_: Тип данных
-        
+        type_: Target type.
+
     Returns:
-        Функция кастинга
-        
+        A caster function.
+
     Raises:
-        ValueError: Если кастер для типа не найден
+        ValueError: If no caster is registered for the given type.
     """
     if type_ in _CASTERS:
         return _CASTERS[type_]
-    
+
     raise ValueError(f"no caster registered for type {type_}")
 
 
 def cast_value(value: str, type_: type) -> Any:
-    """Кастит значение в указанный тип.
-    
-    Поддерживает базовые типы и list[T].
-    
+    """Cast the value to the given type.
+
+    Supports built-in types and `list[T]`.
+
     Args:
-        value: Строковое значение из окружения
-        type_: Целевой тип данных
-        
+        value: Raw string value from the environment.
+        type_: Target type.
+
     Returns:
-        Значение указанного типа
-        
+        The parsed value.
+
     Raises:
-        ValueError: Если кастинг невозможен
+        ValueError: If casting is not possible.
     """
     origin = get_origin(type_)
-    
-    # Обработка list[T]
+
     if origin is list:
         args = get_args(type_)
         item_type = args[0] if args else str
         return cast_list(value, item_type)
-    
-    # Обработка базовых типов
+
     caster = _get_caster_for_type(type_)
     return caster(value)

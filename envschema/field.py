@@ -1,20 +1,20 @@
-"""Модуль дескриптора Field для описания полей схемы."""
+"""Field descriptor for describing environment schema fields."""
 
 from typing import Any, Optional
 
 
-# Sentinel для отсутствия значения по умолчанию
+# Sentinel used when no default value is provided.
 _MISSING = object()
 
 
 class Field:
-    """Дескриптор для описания поля схемы окружения.
-    
+    """Descriptor that defines a single environment schema field.
+
     Attributes:
-        default: Значение по умолчанию (если не обязательное)
-        env: Кастомное имя переменной окружения
-        description: Описание поля для документации
-        prefix: Префикс для вложенных структур
+        default: Default value (if the field is optional).
+        env: Custom environment variable name.
+        description: Optional description (for documentation).
+        prefix: Prefix used for nested structures.
     """
     
     def __init__(
@@ -24,38 +24,38 @@ class Field:
         description: Optional[str] = None,
         prefix: Optional[str] = None,
     ) -> None:
-        """Инициализирует дескриптор поля.
-        
+        """Create a field descriptor.
+
         Args:
-            default: Значение по умолчанию. Если не указано, поле обязательное
-            env: Кастомное имя переменной окружения
-            description: Описание поля для автогенерации документации
-            prefix: Префикс для вложенных структур (например, "DB_")
+            default: Default value. If not provided, the field is required.
+            env: Custom environment variable name.
+            description: Field description (for documentation generation).
+            prefix: Prefix for nested structures (for example, `"DB_"`).
         """
         self.default = default
         self.env = env
         self.description = description
         self.prefix = prefix
         self._name: Optional[str] = None
-    
+
     def __set_name__(self, owner: type, name: str) -> None:
-        """Вызывается при определении дескриптора в классе.
-        
+        """Called when the descriptor is assigned to a class attribute.
+
         Args:
-            owner: Класс-владелец
-            name: Имя атрибута в классе
+            owner: Owning class.
+            name: Attribute name on the class.
         """
         self._name = name
-    
+
     @property
     def name(self) -> str:
-        """Возвращает имя поля.
-        
+        """Return the field name.
+
         Returns:
-            Имя поля в схеме
-            
+            Field name in the schema.
+
         Raises:
-            RuntimeError: Если дескриптор не был правильно инициализирован
+            RuntimeError: If the descriptor was not initialized properly.
         """
         if self._name is None:
             raise RuntimeError(
@@ -63,60 +63,57 @@ class Field:
                 "Make sure it's used as a class attribute."
             )
         return self._name
-    
+
     def get_env_name(self, prefix: str = "") -> str:
-        """Получает имя переменной окружения для поля.
-        
-        Применяет префикс (если есть) и преобразует в UPPER_CASE.
-        
+        """Get the environment variable name for this field.
+
+        Applies prefixes (if provided) and converts the field name to upper case.
+
         Args:
-            prefix: Префикс схемы (если поле находится во вложенной структуре)
-            
+            prefix: Schema prefix (for nested structures).
+
         Returns:
-            Имя переменной окружения (UPPER_CASE)
+            Environment variable name (upper case).
         """
         if self.env:
             return self.env
-        
-        # Преобразуем имя поля в UPPER_CASE
+
         env_name = self.name.upper()
-        
-        # Добавляем префикс Field'а (для вложенных структур)
+
         if self.prefix:
             env_name = f"{self.prefix}{env_name}"
-        
-        # Добавляем префикс схемы
+
         if prefix:
             env_name = f"{prefix}{env_name}"
-        
+
         return env_name
-    
+
     def has_default(self) -> bool:
-        """Проверяет, есть ли у поля значение по умолчанию.
-        
+        """Return whether the field has a default value.
+
         Returns:
-            True если поле имеет значение по умолчанию, False если обязательное
+            True if the field has a default value, False if it is required.
         """
         return self.default is not _MISSING
-    
+
     def get_default(self) -> Any:
-        """Получает значение по умолчанию.
-        
+        """Return the default value.
+
         Returns:
-            Значение по умолчанию
-            
+            Default value.
+
         Raises:
-            RuntimeError: Если поле не имеет значения по умолчанию
+            RuntimeError: If the field does not have a default value.
         """
         if not self.has_default():
             raise RuntimeError(f"Field '{self.name}' has no default value")
         return self.default
-    
+
     def __repr__(self) -> str:
-        """Возвращает строковое представление дескриптора.
-        
+        """Return a debug representation of the descriptor.
+
         Returns:
-            Строковое представление для отладки
+            Debug string representation.
         """
         parts = []
         
@@ -137,18 +134,18 @@ class Field:
 
 
 def field_from_default(default_value: Any) -> Field:
-    """Создает Field из значения по умолчанию.
-    
-    Используется для автоматического создания Field'ов из простых дефолтов.
-    
+    """Create a `Field` from a simple default value.
+
+    Used by the metaclass to turn plain defaults into `Field` descriptors.
+
     Args:
-        default_value: Значение по умолчанию
-        
+        default_value: Default value.
+
     Returns:
-        Field с указанным значением по умолчанию
-        
+        A `Field` instance with the provided default.
+
     Example:
         >>> class Settings(EnvSchema):
-        ...     debug: bool = False  # Автоматически → Field(default=False)
+        ...     debug: bool = False  # Automatically becomes Field(default=False)
     """
     return Field(default=default_value)

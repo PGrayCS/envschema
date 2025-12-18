@@ -2,14 +2,14 @@ from typing import Any, Optional
 
 
 class ValidationError:
-    """Ошибка валидации одного поля.
-    
+    """Validation error for a single schema field.
+
     Attributes:
-        field_name: Имя поля в схеме
-        env_var: Имя переменной окружения
-        message: Описание ошибки
-        value: Значение, которое не прошло валидацию (если есть)
-        expected_type: Ожидаемый тип данных (если применимо)
+        field_name: Field name in the schema.
+        env_var: Environment variable name.
+        message: Human-readable error message.
+        value: The offending value, if available.
+        expected_type: Expected type name, if available.
     """
     
     def __init__(
@@ -20,26 +20,26 @@ class ValidationError:
         value: Optional[Any] = None,
         expected_type: Optional[str] = None,
     ) -> None:
-        """Инициализирует ошибку валидации.
-        
+        """Create a validation error.
+
         Args:
-            field_name: Имя поля в схеме
-            env_var: Имя переменной окружения
-            message: Описание ошибки
-            value: Значение, которое не прошло валидацию
-            expected_type: Ожидаемый тип данных
+            field_name: Field name in the schema.
+            env_var: Environment variable name.
+            message: Human-readable error message.
+            value: The offending value, if available.
+            expected_type: Expected type name, if available.
         """
         self.field_name = field_name
         self.env_var = env_var
         self.message = message
         self.value = value
         self.expected_type = expected_type
-    
+
     def format(self) -> str:
-        """Форматирует ошибку в читаемую строку.
-        
+        """Format the error as a readable string.
+
         Returns:
-            Отформатированное сообщение об ошибке
+            Formatted error message.
         """
         msg = f"{self.env_var}: {self.message}"
         
@@ -53,12 +53,12 @@ class ValidationError:
             msg += f" [got: {value_repr}]"
         
         return msg
-    
+
     def __repr__(self) -> str:
-        """Возвращает строковое представление ошибки.
-        
+        """Return a debug representation of the error.
+
         Returns:
-            Строковое представление для отладки
+            Debug string representation.
         """
         return (
             f"ValidationError(field={self.field_name!r}, "
@@ -67,30 +67,29 @@ class ValidationError:
 
 
 class EnvSchemaError(Exception):
-    """Исключение при загрузке и валидации схемы окружения.
-    
-    Агрегирует множественные ошибки валидации и форматирует их
-    в понятное сообщение.
-    
+    """Raised when loading/validating an environment schema fails.
+
+    Aggregates multiple validation errors into a single readable message.
+
     Attributes:
-        errors: Список ошибок валидации
+        errors: List of validation errors.
     """
     
     def __init__(self, errors: list[ValidationError]) -> None:
-        """Инициализирует исключение с набором ошибок.
-        
+        """Create an exception with the given validation errors.
+
         Args:
-            errors: Список ошибок валидации
+            errors: List of validation errors.
         """
         self.errors = errors
         message = self._format_errors()
         super().__init__(message)
-    
+
     def _format_errors(self) -> str:
-        """Форматирует все ошибки в единое сообщение.
-        
+        """Format all errors into a single message.
+
         Returns:
-            Отформатированное сообщение со всеми ошибками
+            A formatted message containing all errors.
         """
         if not self.errors:
             return "Unknown environment schema error"
@@ -106,11 +105,11 @@ class EnvSchemaError(Exception):
             lines.append(f"  * {error.format()}")
         
         return "\n".join(lines)
-    
+
     def __repr__(self) -> str:
-        """Возвращает строковое представление исключения.
-        
+        """Return a debug representation of the exception.
+
         Returns:
-            Строковое представление для отладки
+            Debug string representation.
         """
         return f"EnvSchemaError(errors={self.errors!r})"
