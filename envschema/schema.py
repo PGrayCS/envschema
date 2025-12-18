@@ -102,6 +102,21 @@ class EnvSchema(metaclass=EnvSchemaMeta):
         return fields
 
     @classmethod
+    def _is_nested_schema(cls, field_type: type) -> bool:
+        """Проверяет, является ли тип вложенной схемой.
+
+        Args:
+            field_type: Тип поля
+
+        Returns:
+            True если тип является подклассом EnvSchema
+        """
+        try:
+            return isinstance(field_type, type) and issubclass(field_type, EnvSchema)
+        except TypeError:
+            return False
+
+    @classmethod
     def load(
         cls,
         env: dict[str, str] | None = None,
@@ -136,20 +151,21 @@ class EnvSchema(metaclass=EnvSchemaMeta):
         values: dict[str, Any] = {}
 
         for field_name, (field, field_type) in fields.items():
-            env_name = field.get_env_name(prefix)
-
             try:
                 value = cls._load_field(
                     field=field,
                     field_name=field_name,
                     field_type=field_type,
-                    env_name=env_name,
+                    parent_prefix=prefix,
                     env=env,
                 )
                 values[field_name] = value
 
             except ValidationError as e:
                 errors.append(e)
+            except EnvSchemaError as e:
+                # Агрегируем ошибки из вложенных схем
+                errors.extend(e.errors)
 
         if errors:
             raise EnvSchemaError(errors)
@@ -157,12 +173,39 @@ class EnvSchema(metaclass=EnvSchemaMeta):
         return cls(**values)
 
     @classmethod
+    def _compute_nested_prefix(
+        cls, field: Field, field_name: str, parent_prefix: str
+    ) -> str:
+        """Вычисляет префикс для вложенной схемы.
+
+        Args:
+            field: Дескриптор поля
+            field_name: Имя поля в схеме
+            parent_prefix: Префикс родительской схемы
+
+        Returns:
+            Полный префикс для вложенной схемы
+        """
+        # Если указан кастомный префикс в Field(prefix="...")
+        if field.prefix is not None:
+            nested_prefix = field.prefix
+        else:
+            # Используем имя поля в UPPER_CASE + "_"
+            nested_prefix = f"{field_name.upper()}_"
+
+        # Добавляем родительский префикс
+        if parent_prefix:
+            return f"{parent_prefix}{nested_prefix}"
+
+        return nested_prefix
+
+    @classmethod
     def _load_field(
         cls,
         field: Field,
         field_name: str,
         field_type: type,
-        env_name: str,
+        parent_prefix: str,
         env: dict[str, str],
     ) -> Any:
         """Загружает и валидирует одно поле.
@@ -171,7 +214,7 @@ class EnvSchema(metaclass=EnvSchemaMeta):
             field: Дескриптор поля
             field_name: Имя поля в схеме
             field_type: Тип поля
-            env_name: Имя переменной окружения
+            parent_prefix: Префикс родительской схемы
             env: Словарь переменных окружения
 
         Returns:
@@ -179,7 +222,20 @@ class EnvSchema(metaclass=EnvSchemaMeta):
 
         Raises:
             ValidationError: Если валидация не прошла
+            EnvSchemaError: Если валидация вложенной схемы не прошла
         """
+        # Проверяем, является ли поле вложенной схемой
+        if cls._is_nested_schema(field_type):
+            return cls._load_nested_schema(
+                field=field,
+                field_name=field_name,
+                schema_type=field_type,
+                parent_prefix=parent_prefix,
+                env=env,
+            )
+
+        # Обычное поле
+        env_name = field.get_env_name(parent_prefix)
         raw_value = env.get(env_name)
 
         # Проверяем наличие значения
@@ -205,6 +261,36 @@ class EnvSchema(metaclass=EnvSchemaMeta):
                 value=raw_value,
                 expected_type=field_type.__name__,
             ) from e
+
+    @classmethod
+    def _load_nested_schema(
+        cls,
+        field: Field,
+        field_name: str,
+        schema_type: type["EnvSchema"],
+        parent_prefix: str,
+        env: dict[str, str],
+    ) -> "EnvSchema":
+        """Загружает вложенную схему.
+
+        Args:
+            field: Дескриптор поля
+            field_name: Имя поля в схеме
+            schema_type: Тип вложенной схемы
+            parent_prefix: Префикс родительской схемы
+            env: Словарь переменных окружения
+
+        Returns:
+            Экземпляр вложенной схемы
+
+        Raises:
+            EnvSchemaError: Если валидация вложенной схемы не прошла
+        """
+        nested_prefix = cls._compute_nested_prefix(field, field_name, parent_prefix)
+
+        # Рекурсивно загружаем вложенную схему
+        # EnvSchemaError пробросится наверх для агрегации ошибок
+        return schema_type.load(env=env, prefix=nested_prefix)
 
     def __repr__(self) -> str:
         """Возвращает строковое представление схемы.
