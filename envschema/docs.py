@@ -3,6 +3,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, get_args, get_origin
 
+from .casters import get_optional_inner_type, is_optional_type
+
 if TYPE_CHECKING:
     from .schema import EnvSchema
 
@@ -140,7 +142,11 @@ class DocumentationGenerator:
             else:
                 # Обычное поле
                 env_name = field.get_env_name(parent_prefix)
-                is_required = not field.has_default()
+
+                # Проверяем Optional[T]
+                is_optional = is_optional_type(field_type)
+                is_required = not field.has_default() and not is_optional
+
                 default_value = field.get_default() if field.has_default() else None
                 description = field.description or ""
 
@@ -170,7 +176,7 @@ class DocumentationGenerator:
             Полный префикс для вложенной схемы
         """
         if field.prefix:
-            nested_prefix = str(field.prefix)
+            nested_prefix: str = field.prefix
         else:
             nested_prefix = f"{field_name.upper()}_"
 
@@ -200,20 +206,32 @@ class DocumentationGenerator:
         """
         origin = get_origin(field_type)
 
+        # Обработка Optional[T]
+        if is_optional_type(field_type):
+            inner_type = get_optional_inner_type(field_type)
+            inner_handler = self._get_handler_for_type(inner_type)
+
+            # Optional типы форматируются как inner тип
+            return TypeHandler(
+                format_default=lambda v: (
+                    "" if v is None else inner_handler.format_default(v)
+                ),
+                get_example=inner_handler.get_example,
+                type_name=f"Optional[{inner_handler.type_name}]",
+            )
+
         # Обработка list[T]
         if origin is list:
             args = get_args(field_type)
             item_type = args[0] if args else str
 
             if item_type is str:
-                # list[str] - CSV формат
                 return TypeHandler(
                     format_default=lambda v: ",".join(str(item) for item in v),
                     get_example=lambda: "value1,value2",
                     type_name=f"list[{item_type.__name__}]",
                 )
             else:
-                # list[int], list[float] и т.д. - JSON массив
                 return TypeHandler(
                     format_default=json.dumps,
                     get_example=lambda: "[1, 2, 3]",
@@ -224,7 +242,7 @@ class DocumentationGenerator:
         if field_type in TYPE_HANDLERS:
             return TYPE_HANDLERS[field_type]
 
-        # Неизвестный тип - используем str как fallback
+        # Неизвестный тип
         return TypeHandler(
             format_default=str,
             get_example=lambda: "your_value_here",
@@ -287,7 +305,6 @@ class DocumentationGenerator:
         if not text:
             return ""
 
-        # Экранируем специальные символы Markdown
         replacements = [
             ("\\", "\\\\"),
             ("|", "\\|"),

@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Any, get_type_hints
 
-from .casters import cast_value
+from .casters import _get_type_name, cast_value, is_optional_type
 from .errors import EnvSchemaError, ValidationError
 from .field import _MISSING, Field, field_from_default
 from .loader import load_env_with_dotenv
@@ -242,12 +242,15 @@ class EnvSchema(metaclass=EnvSchemaMeta):
         if raw_value is None:
             if field.has_default():
                 return field.get_default()
+            elif is_optional_type(field_type):
+                # Optional[T] без значения → возвращаем None
+                return None
             else:
                 raise ValidationError(
                     field_name=field_name,
                     env_var=env_name,
                     message="missing required environment variable",
-                    expected_type=field_type.__name__,
+                    expected_type=_get_type_name(field_type),
                 )
 
         # Кастим значение в нужный тип
@@ -259,7 +262,7 @@ class EnvSchema(metaclass=EnvSchemaMeta):
                 env_var=env_name,
                 message=str(e),
                 value=raw_value,
-                expected_type=field_type.__name__,
+                expected_type=_get_type_name(field_type),
             ) from e
 
     @classmethod
