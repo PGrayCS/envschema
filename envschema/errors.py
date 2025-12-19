@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any
 
 
 class ValidationError:
@@ -11,14 +11,14 @@ class ValidationError:
         value: The offending value, if available.
         expected_type: Expected type name, if available.
     """
-    
+
     def __init__(
         self,
         field_name: str,
         env_var: str,
         message: str,
-        value: Optional[Any] = None,
-        expected_type: Optional[str] = None,
+        value: Any | None = None,
+        expected_type: str | None = None,
     ) -> None:
         """Create a validation error.
 
@@ -42,16 +42,16 @@ class ValidationError:
             Formatted error message.
         """
         msg = f"{self.env_var}: {self.message}"
-        
+
         if self.expected_type:
             msg += f" (expected type: {self.expected_type})"
-        
+
         if self.value is not None:
             value_repr = repr(self.value)
             if len(value_repr) > 50:
                 value_repr = value_repr[:47] + "..."
             msg += f" [got: {value_repr}]"
-        
+
         return msg
 
     def __repr__(self) -> str:
@@ -74,7 +74,7 @@ class EnvSchemaError(Exception):
     Attributes:
         errors: List of validation errors.
     """
-    
+
     def __init__(self, errors: list[ValidationError]) -> None:
         """Create an exception with the given validation errors.
 
@@ -93,17 +93,15 @@ class EnvSchemaError(Exception):
         """
         if not self.errors:
             return "Unknown environment schema error"
-        
+
         error_count = len(self.errors)
         plural = "s" if error_count > 1 else ""
-        
-        lines = [
-            f"Failed to load environment variables ({error_count} error{plural}):"
-        ]
-        
+
+        lines = [f"Failed to load environment variables ({error_count} error{plural}):"]
+
         for error in self.errors:
             lines.append(f"  * {error.format()}")
-        
+
         return "\n".join(lines)
 
     def __repr__(self) -> str:

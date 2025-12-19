@@ -15,10 +15,11 @@ Example:
     >>> print(settings.port)
 """
 
-from .schema import EnvSchema
-from .field import Field
-from .errors import EnvSchemaError, ValidationError
 from .casters import register_caster
+from .errors import EnvSchemaError, ValidationError
+from .field import Field
+from .loader import load_dotenv, load_env_with_dotenv
+from .schema import EnvSchema
 
 __version__ = "0.1.0"
 
@@ -28,4 +29,6 @@ __all__ = [
     "EnvSchemaError",
     "ValidationError",
     "register_caster",
+    "load_dotenv",
+    "load_env_with_dotenv",
 ]

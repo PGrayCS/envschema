@@ -1,7 +1,6 @@
 """Field descriptor for describing environment schema fields."""
 
-from typing import Any, Optional
-
+from typing import Any
 
 # Sentinel used when no default value is provided.
 _MISSING = object()
@@ -16,13 +15,13 @@ class Field:
         description: Optional description (for documentation).
         prefix: Prefix used for nested structures.
     """
-    
+
     def __init__(
         self,
         default: Any = _MISSING,
-        env: Optional[str] = None,
-        description: Optional[str] = None,
-        prefix: Optional[str] = None,
+        env: str | None = None,
+        description: str | None = None,
+        prefix: str | None = None,
     ) -> None:
         """Create a field descriptor.
 
@@ -76,6 +75,9 @@ class Field:
             Environment variable name (upper case).
         """
         if self.env:
+            # Кастомное имя — применяем только префикс схемы
+            if prefix:
+                return f"{prefix}{self.env}"
             return self.env
 
         env_name = self.name.upper()
@@ -106,7 +108,8 @@ class Field:
             RuntimeError: If the field does not have a default value.
         """
         if not self.has_default():
-            raise RuntimeError(f"Field '{self.name}' has no default value")
+            field_name = self._name or "<unnamed>"
+            raise RuntimeError(f"Field '{field_name}' has no default value")
         return self.default
 
     def __repr__(self) -> str:
@@ -116,19 +119,19 @@ class Field:
             Debug string representation.
         """
         parts = []
-        
+
         if self.has_default():
             parts.append(f"default={self.default!r}")
-        
+
         if self.env:
             parts.append(f"env={self.env!r}")
-        
+
         if self.description:
             parts.append(f"description={self.description!r}")
-        
+
         if self.prefix:
             parts.append(f"prefix={self.prefix!r}")
-        
+
         args = ", ".join(parts) if parts else ""
         return f"Field({args})"
 
