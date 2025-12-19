@@ -1,11 +1,12 @@
-"""Модуль для генерации документации из схем EnvSchema."""
-
 import json
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, get_args, get_origin
+from typing import TYPE_CHECKING, Any, get_args, get_origin
 
-from .schema import EnvSchema
+from .casters import get_optional_inner_type, is_optional_type
+
+if TYPE_CHECKING:
+    from .schema import EnvSchema
 
 
 class TypeHandler:
@@ -75,7 +76,7 @@ class DocumentationGenerator:
 
     def __init__(
         self,
-        schema_class: type[EnvSchema],
+        schema_class: type["EnvSchema"],
         prefix: str | None = None,
     ) -> None:
         """Инициализирует генератор.
@@ -88,33 +89,101 @@ class DocumentationGenerator:
         self.prefix = prefix or ""
         self._metadata_cache: list[dict[str, Any]] | None = None
 
+    @staticmethod
+    def _is_nested_schema(field_type: type) -> bool:
+        """Проверяет, является ли тип вложенной схемой.
+
+        Args:
+            field_type: Тип поля
+
+        Returns:
+            True если тип является подклассом EnvSchema
+        """
+        from .schema import EnvSchema
+
+        try:
+            return isinstance(field_type, type) and issubclass(field_type, EnvSchema)
+        except TypeError:
+            return False
+
     def _collect_metadata(self) -> list[dict[str, Any]]:
-        """Собирает метаданные полей схемы.
+        """Собирает метаданные полей схемы (включая вложенные).
 
         Returns:
             Список словарей с метаданными каждого поля
         """
-        fields = self.schema_class._get_fields()
+        return self._collect_fields_recursive(self.schema_class, self.prefix)
+
+    def _collect_fields_recursive(
+        self, schema_class: type["EnvSchema"], parent_prefix: str
+    ) -> list[dict[str, Any]]:
+        """Рекурсивно собирает поля из схемы и вложенных схем.
+
+        Args:
+            schema_class: Класс схемы
+            parent_prefix: Префикс родительской схемы
+
+        Returns:
+            Список метаданных полей
+        """
+        fields = schema_class._get_fields()
         metadata = []
 
         for field_name, (field, field_type) in fields.items():
-            env_name = field.get_env_name(self.prefix)
-            is_required = not field.has_default()
-            default_value = field.get_default() if field.has_default() else None
-            description = field.description or ""
+            # Проверяем, является ли поле вложенной схемой
+            if self._is_nested_schema(field_type):
+                nested_prefix = self._compute_nested_prefix(
+                    field, field_name, parent_prefix
+                )
+                nested_metadata = self._collect_fields_recursive(
+                    field_type, nested_prefix
+                )
+                metadata.extend(nested_metadata)
+            else:
+                # Обычное поле
+                env_name = field.get_env_name(parent_prefix)
 
-            metadata.append(
-                {
-                    "field_name": field_name,
-                    "env_name": env_name,
-                    "field_type": field_type,
-                    "is_required": is_required,
-                    "default_value": default_value,
-                    "description": description,
-                }
-            )
+                # Проверяем Optional[T]
+                is_optional = is_optional_type(field_type)
+                is_required = not field.has_default() and not is_optional
+
+                default_value = field.get_default() if field.has_default() else None
+                description = field.description or ""
+
+                metadata.append(
+                    {
+                        "field_name": field_name,
+                        "env_name": env_name,
+                        "field_type": field_type,
+                        "is_required": is_required,
+                        "default_value": default_value,
+                        "description": description,
+                    }
+                )
 
         return metadata
+
+    @staticmethod
+    def _compute_nested_prefix(field: Any, field_name: str, parent_prefix: str) -> str:
+        """Вычисляет префикс для вложенной схемы.
+
+        Args:
+            field: Дескриптор поля
+            field_name: Имя поля в схеме
+            parent_prefix: Префикс родительской схемы
+
+        Returns:
+            Полный префикс для вложенной схемы
+        """
+        if field.prefix:
+            nested_prefix: str = field.prefix
+        else:
+            nested_prefix = f"{field_name.upper()}_"
+
+        if parent_prefix:
+            return f"{parent_prefix}{nested_prefix}"
+
+        return nested_prefix
 
     def _get_field_metadata(self) -> list[dict[str, Any]]:
         """Получает метаданные полей (с кешированием).
@@ -137,20 +206,32 @@ class DocumentationGenerator:
         """
         origin = get_origin(field_type)
 
+        # Обработка Optional[T]
+        if is_optional_type(field_type):
+            inner_type = get_optional_inner_type(field_type)
+            inner_handler = self._get_handler_for_type(inner_type)
+
+            # Optional типы форматируются как inner тип
+            return TypeHandler(
+                format_default=lambda v: (
+                    "" if v is None else inner_handler.format_default(v)
+                ),
+                get_example=inner_handler.get_example,
+                type_name=f"Optional[{inner_handler.type_name}]",
+            )
+
         # Обработка list[T]
         if origin is list:
             args = get_args(field_type)
             item_type = args[0] if args else str
 
             if item_type is str:
-                # list[str] - CSV формат
                 return TypeHandler(
                     format_default=lambda v: ",".join(str(item) for item in v),
                     get_example=lambda: "value1,value2",
                     type_name=f"list[{item_type.__name__}]",
                 )
             else:
-                # list[int], list[float] и т.д. - JSON массив
                 return TypeHandler(
                     format_default=json.dumps,
                     get_example=lambda: "[1, 2, 3]",
@@ -161,7 +242,7 @@ class DocumentationGenerator:
         if field_type in TYPE_HANDLERS:
             return TYPE_HANDLERS[field_type]
 
-        # Неизвестный тип - используем str как fallback
+        # Неизвестный тип
         return TypeHandler(
             format_default=str,
             get_example=lambda: "your_value_here",
@@ -224,15 +305,14 @@ class DocumentationGenerator:
         if not text:
             return ""
 
-        # Экранируем специальные символы Markdown
         replacements = [
-            ("\\", "\\\\"),  # Сначала экранируем обратный слэш
-            ("|", "\\|"),  # Таблицы
-            ("_", "\\_"),  # Курсив/жирный
-            ("*", "\\*"),  # Курсив/жирный
-            ("[", "\\["),  # Ссылки
-            ("]", "\\]"),  # Ссылки
-            ("`", "\\`"),  # Код
+            ("\\", "\\\\"),
+            ("|", "\\|"),
+            ("_", "\\_"),
+            ("*", "\\*"),
+            ("[", "\\["),
+            ("]", "\\]"),
+            ("`", "\\`"),
         ]
 
         for old, new in replacements:

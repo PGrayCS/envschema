@@ -1,6 +1,6 @@
 import json
 from collections.abc import Callable
-from typing import Any, TypeVar, get_args, get_origin
+from typing import Any, TypeVar, Union, cast, get_args, get_origin
 
 T = TypeVar("T")
 CasterFunc = Callable[[str], Any]
@@ -130,7 +130,7 @@ def cast_list(value: str, item_type: type = str) -> list:
             return [caster(item) for item in items]
         except ValueError as e:
             raise ValueError(
-                f"cannot cast list items to {item_type.__name__}: {e}"
+                f"cannot cast list items to {_get_type_name(item_type)}: {e}"
             ) from e
 
     return items
@@ -200,10 +200,97 @@ def _get_caster_for_type(type_: type) -> CasterFunc:
     raise ValueError(f"no caster registered for type {type_}")
 
 
+def is_optional_type(type_: type) -> bool:
+    """Проверяет, является ли тип Optional[T] или Union[T, None].
+
+    Args:
+        type_: Тип для проверки
+
+    Returns:
+        True если тип является Optional[T] или Union[T, None]
+    """
+    origin = get_origin(type_)
+
+    # Проверяем, является ли origin Union-типом
+    # В Python 3.10+ это types.UnionType для X | Y синтаксиса
+    # или typing.Union для Union[X, Y]
+    if origin is Union:
+        args = get_args(type_)
+        # Union должен содержать ровно 2 аргумента, один из которых NoneType
+        return len(args) == 2 and type(None) in args
+
+    # Проверяем новый синтаксис Python 3.10+ (X | Y)
+    try:
+        import types
+
+        if hasattr(types, "UnionType") and isinstance(type_, types.UnionType):
+            args = get_args(type_)
+            return len(args) == 2 and type(None) in args
+    except (ImportError, AttributeError):
+        pass
+
+    return False
+
+
+def get_optional_inner_type(type_: type) -> type:
+    """Извлекает внутренний тип T из Optional[T].
+
+    Args:
+        type_: Optional тип
+
+    Returns:
+        Внутренний тип T
+
+    Raises:
+        ValueError: Если тип не является Optional
+    """
+    if not is_optional_type(type_):
+        raise ValueError(f"type {type_} is not Optional")
+
+    args = get_args(type_)
+
+    # Возвращаем тип, который не NoneType
+    for arg in args:
+        if arg is not type(None):
+            # Явно приводим к type, так как get_args может вернуть Any
+            return cast(type, arg)
+
+    raise ValueError(f"cannot extract inner type from {type_}")
+
+
+def _get_type_name(type_: type) -> str:
+    """Безопасно получает имя типа для отображения.
+
+    Обрабатывает все случаи, включая UnionType, Optional, list[T] и т.д.
+
+    Args:
+        type_: Тип данных
+
+    Returns:
+        Строковое представление имени типа
+    """
+    # Для Optional[T] показываем как Optional[inner_type]
+    if is_optional_type(type_):
+        inner_type = get_optional_inner_type(type_)
+        inner_name = _get_type_name(inner_type)
+        return f"Optional[{inner_name}]"
+
+    # Для list[T] показываем как list[item_type]
+    origin = get_origin(type_)
+    if origin is list:
+        args = get_args(type_)
+        item_type = args[0] if args else str
+        item_name = _get_type_name(item_type)
+        return f"list[{item_name}]"
+
+    # Для обычных типов используем __name__ или str()
+    return getattr(type_, "__name__", str(type_))
+
+
 def cast_value(value: str, type_: type) -> Any:
     """Кастит значение в указанный тип.
 
-    Поддерживает базовые типы и list[T].
+    Поддерживает базовые типы, list[T] и Optional[T].
 
     Args:
         value: Строковое значение из окружения
@@ -215,6 +302,11 @@ def cast_value(value: str, type_: type) -> Any:
     Raises:
         ValueError: Если кастинг невозможен
     """
+    # Обработка Optional[T] - должна быть первой
+    if is_optional_type(type_):
+        inner_type = get_optional_inner_type(type_)
+        return cast_value(value, inner_type)
+
     origin = get_origin(type_)
 
     # Обработка list[T]
